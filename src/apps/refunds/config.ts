@@ -1,7 +1,7 @@
 import type { AppConfig, ResourceConfig } from "@/lib/types";
 
 /** Refunds strictly above this amount (in cents) need two distinct approvers. */
-export const approvalThreshold = 100_000;
+export const approvalThreshold = 50_000;
 
 export const REFUND_STATUSES = ["requested", "approved", "denied", "issued"] as const;
 

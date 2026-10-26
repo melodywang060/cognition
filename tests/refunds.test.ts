@@ -40,8 +40,8 @@ beforeAll(setupFixtures);
 afterAll(() => prisma.$disconnect());
 
 describe("refunds app", () => {
-  it("declares a $1,000 approval threshold in config", () => {
-    expect(approvalThreshold).toBe(100_000);
+  it("declares a $500 approval threshold in config", () => {
+    expect(approvalThreshold).toBe(50_000);
     expect(refunds.approval?.threshold).toBe(approvalThreshold);
   });
 
@@ -82,6 +82,12 @@ describe("refunds app", () => {
 
     expect(await (await decide(id, users.reviewer2, "approve")).json()).toEqual({ status: "approved", approvals: 2, required: 2 });
     expect(await status(id)).toBe("approved");
+  });
+
+  it("needs two distinct approvers between $500 and the old $1,000 threshold", async () => {
+    const { id } = await requestRefund(users.agent, 75_000);
+    expect(await (await decide(id, users.reviewer, "approve")).json()).toEqual({ status: "requested", approvals: 1, required: 2 });
+    expect(await (await decide(id, users.admin, "approve")).json()).toEqual({ status: "approved", approvals: 2, required: 2 });
   });
 
   it("returns 403 when a reviewer issues (admin only)", async () => {

@@ -4,7 +4,7 @@ Prototype for evaluating whether a fintech team can replace Power Apps internal 
 
 It has two apps:
 
-- **Refunds dashboard**: support agents request customer refunds, finance reviewers approve or deny them (maker-checker, with two distinct approvers above $1,000), and admins mark approved refunds as issued.
+- **Refunds dashboard**: support agents request customer refunds, finance reviewers approve or deny them (maker-checker, with two distinct approvers above $500), and admins mark approved refunds as issued.
 - **Feature-flag admin**: engineers toggle flags and set rollout percentages in dev and staging; in prod only admins can request a change, and it applies only after a second admin approves.
 
 Every change is recorded in an append-only audit log.
@@ -30,7 +30,7 @@ Code: `src/apps/refunds/` (`config.ts` declares fields, list/filters, form, role
 | Refund list (`/apps/refunds/refunds`) | everyone | Search (customer, order id, notes); filter by status, customer, amount range (dollars) |
 | Refund detail | everyone | Customer, order id, amount, reason code, status, requester, approvals; audit history for `reviewer`+ |
 | Request refund (form) | `agent`+ | Created in `requested`; the requester is the signed-in user, set on the server |
-| Approve / deny with reason | `reviewer`+, never the requester | Deny needs a reason. Amounts over `approvalThreshold` (`config.ts`, $1,000) need two distinct approvers |
+| Approve / deny with reason | `reviewer`+, never the requester | Deny needs a reason. Amounts over `approvalThreshold` (`config.ts`, $500) need two distinct approvers |
 | Issue | `admin` | `approved` → `issued`; stand-in for a payments API call |
 
 Refunds can't be edited or deleted; status changes only through approve/deny and issue.
@@ -65,7 +65,7 @@ Auth is a stub: pick a user from the switcher in the top right (it sets a `uid` 
 
 Roles are ordered (`agent` < `reviewer` < `admin`). Every check runs on the server; hiding a button is only a hint.
 
-To act as someone else, pick them in the switcher; the page reloads as that user. For example: request a refund as Alice, approve it as Rita (and Rob if it's over $1,000), then issue it as Adam. Only reviewers and admins see the audit log.
+To act as someone else, pick them in the switcher; the page reloads as that user. For example: request a refund as Alice, approve it as Rita (and Rob if it's over $500), then issue it as Adam. Only reviewers and admins see the audit log.
 
 ## Foundation
 
