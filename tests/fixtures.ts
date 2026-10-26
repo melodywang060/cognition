@@ -40,6 +40,7 @@ export const users = {
   reviewer: { id: "t-reviewer", name: "Test Reviewer", email: "t-reviewer@test", role: "reviewer" },
   reviewer2: { id: "t-reviewer2", name: "Test Reviewer 2", email: "t-reviewer2@test", role: "reviewer" },
   admin: { id: "t-admin", name: "Test Admin", email: "t-admin@test", role: "admin" },
+  admin2: { id: "t-admin2", name: "Test Admin 2", email: "t-admin2@test", role: "admin" },
 } satisfies Record<string, User>;
 
 export async function setupFixtures() {

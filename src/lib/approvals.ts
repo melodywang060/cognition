@@ -19,6 +19,7 @@ function ruleOf(config: ResourceConfig): ApprovalRule & { statusField: string } 
 }
 
 export function requiredApprovals(rule: ApprovalRule, row: Row): number {
+  if (!rule.amountField || rule.threshold === undefined) return 1;
   return Number(row[rule.amountField]) > rule.threshold ? 2 : 1;
 }
 
@@ -42,6 +43,8 @@ export async function decide(
   recordId: string,
   decision: Decision,
   reason?: string,
+  /** Runs in the decision's transaction once the record reaches `approved` (used by change requests). */
+  onApproved?: (tx: Tx, row: Row) => Promise<void>,
 ): Promise<DecisionResult> {
   const rule = ruleOf(config);
   assertRole(user, rule.approverRole, `approve ${config.label}`);
@@ -88,6 +91,7 @@ export async function decide(
         { tx, action: decision },
       );
     }
+    if (status === rule.states.approved) await onApproved?.(tx, row);
     return { status, approvals, required };
   });
 }

@@ -1,15 +1,22 @@
 import { notFound } from "next/navigation";
 import { listApprovals, requiredApprovals } from "../approvals";
-import { allFields, canSeeField, repo } from "../repo";
+import { changeRequestApprovals, listChangeRequests } from "../change-requests";
+import { allFields, canSeeField, matchesWhere, repo } from "../repo";
 import { hasRole, type User } from "../roles";
-import { approvalsResource, auditResource } from "../system-resources";
-import type { ResourceConfig } from "../types";
+import { approvalsResource, auditResource, CHANGE_STATES, changeRequestsResource } from "../system-resources";
+import type { ResourceConfig, Row, Where } from "../types";
 import { DataTable } from "./DataTable";
 import { FieldValue } from "./format";
-import { recordHistory } from "./history";
+import { FormScreen } from "./FormScreen";
+import { canSeeHistory, recordHistory } from "./history";
 import { RecordActions } from "./RecordActions";
 
-/** Generic detail screen: fields, approvals, actions and the record's audit history. */
+const describeWhere = (where: Where) =>
+  Object.entries(where)
+    .map(([k, c]) => `${k} ${c !== null && typeof c === "object" && !(c instanceof Date) ? JSON.stringify(c) : `= ${String(c)}`}`)
+    .join(" and ");
+
+/** Generic detail screen: fields, edit form, approvals, change requests, actions and the record's audit history. */
 export async function DetailScreen({
   user,
   resource,
@@ -38,8 +45,26 @@ export async function DetailScreen({
   const transitions = Object.entries(resource.transitions ?? {})
     .filter(([, t]) => hasRole(user.role, t.role) && status !== undefined && t.from.includes(status))
     .map(([name, t]) => ({ name, label: t.label }));
-  const canSeeAudit = hasRole(user.role, auditResource.permissions.read);
-  const history = canSeeAudit ? await recordHistory(user, resource, id, approvals) : [];
+  const change = resource.changeApproval;
+  const changeRequests = change ? await listChangeRequests(user, resource, id) : [];
+  const changeApprovals = change ? await changeRequestApprovals(user, resource, changeRequests) : [];
+  const openChange = changeRequests.find((c) => c.status === CHANGE_STATES.pending);
+  const canDecideChange = (cr: Row) =>
+    !!change &&
+    hasRole(user.role, change.approverRole) &&
+    cr.requester_id !== user.id &&
+    !changeApprovals.some((a) => a.record_id === cr.id && a.approver_id === user.id);
+  const editFields = (resource.edit?.fields ?? resource.form?.fields ?? []).map((n) => resource.fields.find((f) => f.name === n)!);
+  const canEdit =
+    !!editFields.length &&
+    !!resource.permissions.update &&
+    hasRole(user.role, resource.permissions.update) &&
+    !(change && matchesWhere(row, change.when) && !hasRole(user.role, change.requesterRole));
+  const crFields = changeRequests.length
+    ? allFields(changeRequestsResource(resource)).filter((f) => changeRequestsResource(resource).list.columns.includes(f.name))
+    : [];
+  const canSeeAudit = canSeeHistory(user, resource);
+  const history = canSeeAudit ? await recordHistory(user, resource, id, [...approvals, ...changeApprovals], changeRequests) : [];
   const field = (name: string) => allFields(auditResource).find((f) => f.name === name)!;
 
   return (
@@ -63,6 +88,33 @@ export async function DetailScreen({
             requester.
           </p>
           <DataTable fields={allFields(approvalsResource).filter((f) => approvalsResource.list.columns.includes(f.name))} rows={approvals} users={users} />
+        </section>
+      )}
+
+      {canEdit && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">Edit</h2>
+          {change && (
+            <p className="text-sm text-gray-600">
+              Changes where {describeWhere(change.when)} are requested by a {change.requesterRole} and applied only after a
+              different {change.approverRole} approves.
+            </p>
+          )}
+          <FormScreen fields={editFields} apiUrl={apiBase} values={row} />
+        </section>
+      )}
+
+      {change && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">Change requests</h2>
+          {changeRequests.length ? (
+            <DataTable fields={crFields} rows={changeRequests} users={users} />
+          ) : (
+            <p className="text-sm text-gray-500">None.</p>
+          )}
+          {openChange && (
+            <RecordActions apiBase={`${apiBase}/changes/${openChange.id}`} canDecide={canDecideChange(openChange)} transitions={[]} />
+          )}
         </section>
       )}
 

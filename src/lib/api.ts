@@ -1,5 +1,4 @@
-import { Prisma } from "@prisma/client";
-import { HttpError } from "./errors";
+import { HttpError, isUniqueViolation } from "./errors";
 import type { ResourceConfig } from "./types";
 
 type Handler<P> = (req: Request, params: P) => Promise<unknown>;
@@ -12,7 +11,7 @@ export function route<P extends Record<string, string> = Record<string, never>>(
       return result instanceof Response ? result : Response.json(result);
     } catch (e) {
       if (e instanceof HttpError) return Response.json({ error: e.message }, { status: e.status });
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      if (isUniqueViolation(e)) {
         return Response.json({ error: "Duplicate" }, { status: 409 });
       }
       console.error(e);
@@ -29,9 +28,13 @@ export async function readJson(req: Request): Promise<Record<string, unknown>> {
   throw new HttpError(400, "Body must be a JSON object");
 }
 
-/** Only fields on the resource's form are writable through the API. */
-export function formData(resource: ResourceConfig, body: Record<string, unknown>): Record<string, unknown> {
-  const allowed = resource.form?.fields ?? [];
+/** Only fields on the resource's form (create) or edit list (update) are writable through the API. */
+export function formData(
+  resource: ResourceConfig,
+  body: Record<string, unknown>,
+  op: "create" | "update" = "create",
+): Record<string, unknown> {
+  const allowed = (op === "update" ? resource.edit?.fields : undefined) ?? resource.form?.fields ?? [];
   for (const key of Object.keys(body)) {
     if (!allowed.includes(key)) throw new HttpError(400, `Field "${key}" is not writable`);
   }
