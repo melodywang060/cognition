@@ -6,6 +6,7 @@ import { approvalsResource, auditResource } from "../system-resources";
 import type { ResourceConfig } from "../types";
 import { DataTable } from "./DataTable";
 import { FieldValue } from "./format";
+import { recordHistory } from "./history";
 import { RecordActions } from "./RecordActions";
 
 /** Generic detail screen: fields, approvals, actions and the record's audit history. */
@@ -38,9 +39,7 @@ export async function DetailScreen({
     .filter(([, t]) => hasRole(user.role, t.role) && status !== undefined && t.from.includes(status))
     .map(([name, t]) => ({ name, label: t.label }));
   const canSeeAudit = hasRole(user.role, auditResource.permissions.read);
-  const history = canSeeAudit
-    ? await repo.query(user, auditResource, { where: { table_name: resource.table, record_id: id }, orderBy: { field: "created_at", dir: "asc" } })
-    : [];
+  const history = canSeeAudit ? await recordHistory(user, resource, id, approvals) : [];
   const field = (name: string) => allFields(auditResource).find((f) => f.name === name)!;
 
   return (
@@ -72,7 +71,7 @@ export async function DetailScreen({
       {canSeeAudit && (
         <section className="space-y-2">
           <h2 className="text-lg font-semibold">Audit history</h2>
-          <DataTable fields={["created_at", "actor_id", "action", "before", "after"].map(field)} rows={history} users={users} />
+          <DataTable fields={["created_at", "actor_id", "action", "table_name", "before", "after"].map(field)} rows={history} users={users} />
         </section>
       )}
     </div>

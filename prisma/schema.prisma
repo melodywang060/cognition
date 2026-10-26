@@ -56,3 +56,19 @@ model Approval {
   @@unique([resourceKey, recordId, approverId])
   @@map("approvals")
 }
+
+/// Refunds app (src/apps/refunds). Read and written only through `repo`; status changes only via approvals/transitions.
+model Refund {
+  id          String   @id
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  customer    String
+  orderId     String   @map("order_id")
+  amountCents Int      @map("amount_cents")
+  reasonCode  String   @map("reason_code")
+  notes       String?
+  status      String
+  requesterId String   @map("requester_id")
+
+  @@index([status])
+  @@map("refunds")
+}

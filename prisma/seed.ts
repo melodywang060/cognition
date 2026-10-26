@@ -1,6 +1,6 @@
-import { PrismaClient, type Role } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import type { Role } from "@prisma/client";
+import { seedRefunds } from "../src/apps/refunds/seed";
+import { prisma } from "../src/lib/db";
 
 /** One user per role, plus a second reviewer so two-approver rules can be exercised. */
 const users: { id: string; name: string; email: string; role: Role }[] = [
@@ -14,7 +14,9 @@ async function main() {
   for (const u of users) {
     await prisma.user.upsert({ where: { id: u.id }, update: u, create: u });
   }
-  // App seed data is added per app.
+  // App seed data is added per app, through the foundation so it is audited.
+  const steps = await seedRefunds(users);
+  if (steps) console.log(`Refunds seed: applied ${steps} step(s)`);
 }
 
 main()
