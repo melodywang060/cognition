@@ -26,18 +26,40 @@ Users: support agents (`agent`), finance reviewers (`reviewer`), admins.
 - **Issue:** `admin` marks an approved refund `issued` (stand-in for a payments API call; no real integration).
 - **Seed:** ~30 refunds across all statuses, at least two over the threshold, and users for each role.
 
-## Required tests
+## Build order
 
+Two PRs, each from its own Devin session. Merge 1a before starting 1b.
+
+### PR 1a: Foundation
+
+Items 1 to 6 above, designed for the refunds app but containing no refunds code. Tests use a test-only resource, created in test setup or as a fixture, that declares an approval rule in config.
+
+Required tests:
+- A user without the required role gets 403 from the server on a mutating route.
+- The requester cannot approve their own request.
+- Over-threshold requests need two distinct approvers.
+- Every `repo.mutate()` creates an audit row; a mutation whose audit write fails is rolled back.
+- Row filters and field masks in `repo.query()` hide rows and fields from a role that may not see them.
+
+Done when: lint, typecheck, tests and CI pass; `docker compose up --build` starts with seeded users for each role, a working user switcher, an empty app registry, and the audit page.
+
+### PR 1b: Refunds dashboard
+
+The refunds app above, built only from foundation pieces: config, seed data, any app-specific screens, and its tests. No new auth, authorization, audit or approval code; if the foundation is missing something, change the foundation and say so in the PR.
+
+Required tests:
 - An `agent` gets 403 on the approve route.
 - The requester cannot approve their own refund.
-- Over-threshold refunds need two distinct approvers.
-- Every mutation creates an audit row; a mutation whose audit write fails is rolled back.
+- Refunds over the threshold need two distinct approvers.
+- Request, approve, deny and issue each create an audit row.
+
+Done when: everything in "Definition of done" below holds, and the PR states how many lines are new in `src/apps/refunds/` versus changed in the foundation.
 
 ## Out of scope (document as gaps in the README)
 
 Real Entra ID / conditional access, connectors to real payment or identity systems, notifications, document storage, deployment and secrets management, mobile layouts, KYC review queue.
 
-## Definition of done
+## Definition of done (after PR 1b)
 
 - `npm run lint`, `npm run typecheck`, `npm test` pass; CI is green.
 - `docker compose up --build` starts the app with seeded data at http://localhost:3000.

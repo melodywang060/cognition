@@ -1,6 +1,6 @@
 # Agent guide
 
-Read `spec.md` before building. Record each session in `build-log.md`.
+Read `spec.md` before building. Record each session in `build-log.md`. Session prompts live in `prompts/`.
 
 ## Working in this repo
 
