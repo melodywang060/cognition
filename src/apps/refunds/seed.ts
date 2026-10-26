@@ -1,14 +1,16 @@
-import { decide } from "@/lib/approvals";
+import { decide, listApprovals } from "@/lib/approvals";
 import { repo } from "@/lib/repo";
 import type { User } from "@/lib/roles";
 import { applyTransition } from "@/lib/transitions";
 import { refunds } from "./config";
 
-type Outcome = "requested" | "one_approval" | "approved" | "denied" | "issued";
+export type Outcome = "requested" | "one_approval" | "approved" | "denied" | "issued";
 type Requester = "agent" | "reviewer" | "admin";
 
-// [customer, order id, amount in cents, reason code, notes, requester, outcome]
-const SEED: [string, string, number, string, string | null, Requester, Outcome][] = [
+/** [customer, order id (unique per sample), amount in cents, reason code, notes, requester, outcome] */
+export type SeedRefund = [string, string, number, string, string | null, Requester, Outcome];
+
+export const SEED: SeedRefund[] = [
   ["Acme Logistics", "ORD-10421", 4_999, "duplicate_charge", "Charged twice on 3 Oct", "agent", "requested"],
   ["Jane Cooper", "ORD-10433", 12_500, "item_not_received", null, "agent", "requested"],
   ["Brightside Dental", "ORD-10440", 2_350, "service_outage", "Outage credit, 2 days", "agent", "requested"],
@@ -43,34 +45,49 @@ const SEED: [string, string, number, string, string | null, Requester, Outcome][
 
 /**
  * Seeds refunds through the foundation (repo.mutate, decide, applyTransition), so every seeded
- * refund has real approvals and audit history. Skips if any refunds already exist.
+ * refund has real approvals and audit history. Resumable: each sample is found by order id and
+ * moved only forward towards its outcome, so a seed interrupted between steps completes on the
+ * next run and a finished seed is a no-op. Returns the number of steps applied.
  */
-export async function seedRefunds(users: User[]): Promise<number> {
+export async function seedRefunds(users: User[], samples: SeedRefund[] = SEED): Promise<number> {
   const byRole = (role: Requester) => {
     const u = users.find((x) => x.role === role);
     if (!u) throw new Error(`Seed needs a user with role ${role}`);
     return u;
   };
   const admin = byRole("admin");
-  if ((await repo.query(admin, refunds, { limit: 1 })).length) return 0;
   const approvers = users.filter((u) => u.role === "reviewer" || u.role === "admin");
+  let steps = 0;
 
-  for (const [customer, order_id, amount_cents, reason_code, notes, role, outcome] of SEED) {
+  for (const [customer, order_id, amount_cents, reason_code, notes, role, outcome] of samples) {
     const requester = byRole(role);
-    const row = await repo.mutate(requester, refunds, {
-      kind: "create",
-      data: { customer, order_id, amount_cents, reason_code, notes },
-    });
-    if (outcome === "requested") continue;
-    const [first, second] = approvers.filter((u) => u.id !== requester.id);
-    if (outcome === "denied") {
-      await decide(first, refunds, row.id, "deny", notes ?? "Does not meet refund policy");
-      continue;
+    let [row] = await repo.query(admin, refunds, { where: { order_id }, orderBy: { field: "created_at", dir: "asc" }, limit: 1 });
+    if (!row) {
+      row = await repo.mutate(requester, refunds, { kind: "create", data: { customer, order_id, amount_cents, reason_code, notes } });
+      steps++;
     }
-    const result = await decide(first, refunds, row.id, "approve");
-    if (outcome === "one_approval") continue;
-    if (result.status !== "approved") await decide(second, refunds, row.id, "approve");
-    if (outcome === "issued") await applyTransition(admin, refunds, row.id, "issue");
+    if (outcome === "requested") continue;
+
+    if (row.status === "requested") {
+      const prior = await listApprovals(admin, refunds, row.id);
+      const pending = approvers.filter((u) => u.id !== row.requester_id && !prior.some((a) => a.approver_id === u.id));
+      if (outcome === "denied") {
+        await decide(pending[0], refunds, row.id, "deny", notes ?? "Does not meet refund policy");
+        steps++;
+        continue;
+      }
+      let status = "requested";
+      for (const approver of outcome === "one_approval" ? pending.slice(0, 1 - prior.length) : pending) {
+        if (status !== "requested") break;
+        status = (await decide(approver, refunds, row.id, "approve")).status;
+        steps++;
+      }
+      row = { ...row, status };
+    }
+    if (outcome === "issued" && row.status === "approved") {
+      await applyTransition(admin, refunds, row.id, "issue");
+      steps++;
+    }
   }
-  return SEED.length;
+  return steps;
 }

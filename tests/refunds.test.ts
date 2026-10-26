@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as collection from "@/app/api/apps/[app]/[resource]/route";
 import * as approvals from "@/app/api/apps/[app]/[resource]/[id]/approvals/route";
@@ -6,6 +7,7 @@ import { approvalThreshold, refunds } from "@/apps/refunds/config";
 import { prisma } from "@/lib/db";
 import { repo } from "@/lib/repo";
 import type { User } from "@/lib/roles";
+import { recordHistory } from "@/lib/screens/history";
 import { auditRows, params, request, setupFixtures, users } from "./fixtures";
 
 const base = "/api/apps/refunds/refunds";
@@ -127,5 +129,23 @@ describe("refunds app", () => {
     await decide(id, users.reviewer, "approve");
     expect((await auditRows(id)).map((a) => a.action)).toEqual(["create"]);
     expect(await approvalAuditRows(id)).toHaveLength(1);
+  });
+
+  it("lists an approval before the status change it caused when their timestamps tie", async () => {
+    // decide() writes both audit rows in one transaction, so they can share a timestamp.
+    const { id } = await requestRefund(users.agent);
+    const createdAt = new Date(Date.now() + 60_000);
+    const approvalId = randomUUID();
+    const audit = (tableName: string, recordId: string, action: string) =>
+      prisma.auditEvent.create({ data: { id: randomUUID(), createdAt, actorId: users.reviewer.id, action, tableName, recordId } });
+    await audit("refunds", id, "approve");
+    await audit("approvals", approvalId, "create");
+
+    const history = await recordHistory(users.admin, refunds, id, [{ id: approvalId }]);
+    expect(history.map((h) => [h.table_name, h.action])).toEqual([
+      ["refunds", "create"],
+      ["approvals", "create"],
+      ["refunds", "approve"],
+    ]);
   });
 });

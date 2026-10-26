@@ -15,8 +15,8 @@ async function main() {
     await prisma.user.upsert({ where: { id: u.id }, update: u, create: u });
   }
   // App seed data is added per app, through the foundation so it is audited.
-  const refunds = await seedRefunds(users);
-  if (refunds) console.log(`Seeded ${refunds} refunds`);
+  const steps = await seedRefunds(users);
+  if (steps) console.log(`Refunds seed: applied ${steps} step(s)`);
 }
 
 main()
