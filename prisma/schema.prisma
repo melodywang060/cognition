@@ -6,3 +6,53 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum Role {
+  agent
+  reviewer
+  admin
+}
+
+model User {
+  id        String       @id
+  name      String
+  email     String       @unique
+  role      Role
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  audits    AuditEvent[]
+  approvals Approval[]
+
+  @@map("users")
+}
+
+/// Append-only. UPDATE and DELETE are blocked by a trigger (see migration).
+model AuditEvent {
+  id        String   @id
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  actorId   String   @map("actor_id")
+  action    String
+  tableName String   @map("table_name")
+  recordId  String   @map("record_id")
+  before    Json?
+  after     Json?
+  actor     User     @relation(fields: [actorId], references: [id])
+
+  @@index([tableName, recordId])
+  @@index([actorId])
+  @@map("audit_events")
+}
+
+/// One row per approver decision on a record of any approval-enabled resource.
+model Approval {
+  id          String   @id
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  resourceKey String   @map("resource_key")
+  recordId    String   @map("record_id")
+  approverId  String   @map("approver_id")
+  decision    String
+  reason      String?
+  approver    User     @relation(fields: [approverId], references: [id])
+
+  @@unique([resourceKey, recordId, approverId])
+  @@map("approvals")
+}
