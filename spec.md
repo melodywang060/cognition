@@ -22,7 +22,7 @@ Users: support agents (`agent`), finance reviewers (`reviewer`), admins.
 - **Refund list:** searchable and filterable by status (`requested`, `approved`, `denied`, `issued`), customer, amount.
 - **Refund detail:** customer, order id, amount, reason code, status, requester, approvers, and its audit history.
 - **Request refund (form):** `agent` and above. Creates a refund in `requested`.
-- **Approve / deny with reason:** `reviewer` and above; never the requester. Refunds over $1,000 (`approvalThreshold` in the refunds app config, not hard-coded) need two distinct approvals before moving to `approved`.
+- **Approve / deny with reason:** `reviewer` and above; never the requester. Refunds over $500 (`approvalThreshold` in the refunds app config, not hard-coded) need two distinct approvals before moving to `approved`.
 - **Issue:** `admin` marks an approved refund `issued` (stand-in for a payments API call; no real integration).
 - **Seed:** ~30 refunds across all statuses, at least two over the threshold, and users for each role.
 
