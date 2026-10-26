@@ -38,8 +38,20 @@ export async function DetailScreen({
     .filter(([, t]) => hasRole(user.role, t.role) && status !== undefined && t.from.includes(status))
     .map(([name, t]) => ({ name, label: t.label }));
   const canSeeAudit = hasRole(user.role, auditResource.permissions.read);
+  // The record's own audit rows plus those of its approval decisions (a first approval doesn't change the record).
   const history = canSeeAudit
-    ? await repo.query(user, auditResource, { where: { table_name: resource.table, record_id: id }, orderBy: { field: "created_at", dir: "asc" } })
+    ? (
+        await Promise.all([
+          repo.query(user, auditResource, { where: { table_name: resource.table, record_id: id } }),
+          approvals.length
+            ? repo.query(user, auditResource, {
+                where: { table_name: approvalsResource.table, record_id: { in: approvals.map((a) => a.id) } },
+              })
+            : [],
+        ])
+      )
+        .flat()
+        .sort((a, b) => new Date(a.created_at as string).getTime() - new Date(b.created_at as string).getTime())
     : [];
   const field = (name: string) => allFields(auditResource).find((f) => f.name === name)!;
 
@@ -72,7 +84,7 @@ export async function DetailScreen({
       {canSeeAudit && (
         <section className="space-y-2">
           <h2 className="text-lg font-semibold">Audit history</h2>
-          <DataTable fields={["created_at", "actor_id", "action", "before", "after"].map(field)} rows={history} users={users} />
+          <DataTable fields={["created_at", "actor_id", "action", "table_name", "before", "after"].map(field)} rows={history} users={users} />
         </section>
       )}
     </div>

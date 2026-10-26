@@ -6,7 +6,7 @@ One entry per Devin session. Record the numbers as you go; they are the evidence
 |---|---------|------|------------|-------|-------------|----|
 | 0 | | Repo setup (stack, compose, CI, spec) | | | | |
 | 1a | [session](https://app.devin.ai/sessions/c96b1d649b3b40b78d0bcf5ddcaa7235) | Foundation | | | | |
-| 1b | | Refunds dashboard on the foundation | | | | |
+| 1b | [session](https://app.devin.ai/sessions/8d70d4b0661849cd8cb1eb1316de3dfb) | Refunds dashboard on the foundation | | | | |
 | 2 | | Feature-flag admin from Playbook | | | | |
 
 ## Corrections
