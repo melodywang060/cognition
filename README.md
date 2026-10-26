@@ -14,7 +14,7 @@ docker compose up --build
 
 Open http://localhost:3000, pick a user in the top-right switcher, and open **Refunds**. Health check: http://localhost:3000/api/health.
 
-On start the container applies migrations and seeds users plus ~30 refunds across every status (some over the threshold, one waiting for its second approval). Seeding goes through the foundation, so seeded refunds have real approvals and audit history; it's skipped if refunds already exist. To start from scratch: `docker compose down -v`.
+On start the container applies migrations and seeds users plus ~30 refunds across every status (some over the threshold, one waiting for its second approval). Seeding goes through the foundation, so seeded refunds have real approvals and audit history. It's resumable: each seeded refund is matched by order id and only moved forward, so a seed interrupted partway completes on the next start, and a finished seed does nothing. To start from scratch: `docker compose down -v`.
 
 ## Refunds dashboard
 
