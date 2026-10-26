@@ -57,6 +57,23 @@ model Approval {
   @@map("approvals")
 }
 
+/// A held change to a record of a resource with a `changeApproval` rule (src/lib/change-requests.ts).
+/// At most one open (`requested`) request per record (partial unique index, see migration).
+model ChangeRequest {
+  id          String   @id
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  resourceKey String   @map("resource_key")
+  recordId    String   @map("record_id")
+  kind        String
+  data        Json?
+  before      Json?
+  status      String
+  requesterId String   @map("requester_id")
+
+  @@index([resourceKey, recordId])
+  @@map("change_requests")
+}
+
 /// Refunds app (src/apps/refunds). Read and written only through `repo`; status changes only via approvals/transitions.
 model Refund {
   id          String   @id
@@ -71,4 +88,18 @@ model Refund {
 
   @@index([status])
   @@map("refunds")
+}
+
+/// Feature-flag admin app (src/apps/feature-flags). Read and written only through `repo`; prod changes via change requests.
+model FeatureFlag {
+  id          String   @id
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  name        String
+  description String?
+  environment String
+  enabled     Boolean  @default(false)
+  rolloutPct  Int      @default(0) @map("rollout_pct")
+
+  @@unique([name, environment])
+  @@map("feature_flags")
 }

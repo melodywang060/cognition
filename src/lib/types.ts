@@ -11,6 +11,11 @@ export interface FieldConfig {
   required?: boolean;
   /** Field mask: roles below this never receive the field from `repo.query()`. */
   readRole?: Role;
+  /** Inclusive bounds for `integer` and `money` fields. */
+  min?: number;
+  max?: number;
+  /** Value used on create when the field is not supplied. */
+  default?: Value;
 }
 
 export type Value = string | number | boolean | Date | null;
@@ -36,9 +41,21 @@ export interface ApprovalRule {
   approverRole: Role;
   requesterField: string;
   states: { pending: string; approved: string; denied: string };
-  /** Records whose `amountField` is strictly greater than `threshold` need two distinct approvers. */
-  amountField: string;
-  threshold: number;
+  /** Records whose `amountField` is strictly greater than `threshold` need two distinct approvers. Omit both for one. */
+  amountField?: string;
+  threshold?: number;
+}
+
+/**
+ * Maker-checker for edits (see `src/lib/change-requests.ts`). Updates and deletes of rows that match
+ * `when` before or after the change are held as change requests: a `requesterRole` user requests,
+ * and a different `approverRole` user approves, which applies the change. Creating a matching row
+ * needs `requesterRole`; give gated fields safe `default`s and keep them off the create form.
+ */
+export interface ChangeApprovalRule {
+  when: Where;
+  requesterRole: Role;
+  approverRole: Role;
 }
 
 /** A named status change (e.g. "issue") that a role may apply from specific states. */
@@ -66,6 +83,8 @@ export interface ResourceConfig {
   };
   /** Fields shown on the create form. Omit to disable the form. */
   form?: { fields: string[] };
+  /** Fields editable on the detail page (PATCH). Defaults to `form.fields`; omit both to disable editing. */
+  edit?: { fields: string[] };
   /** Minimum role per operation. A missing operation is denied to everyone. */
   permissions: { read: Role; create?: Role; update?: Role; delete?: Role };
   /** Row filter applied inside `repo.query()`; return undefined for no restriction. */
@@ -74,6 +93,9 @@ export interface ResourceConfig {
   statusField?: string;
   approval?: ApprovalRule;
   transitions?: Record<string, TransitionConfig>;
+  changeApproval?: ChangeApprovalRule;
+  /** Minimum role to see a record's audit history on its detail page. Defaults to the audit page's role. */
+  historyRole?: Role;
   /** System resources only: post-process rows after masking (e.g. mask audit before/after). */
   transformRow?: (row: Row, user: User) => Row;
 }

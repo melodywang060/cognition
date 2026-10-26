@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { writeAudit } from "./audit";
 import { prisma } from "./db";
-import { NotFoundError, ValidationError } from "./errors";
+import { ApprovalRequiredError, ConflictError, NotFoundError, ValidationError } from "./errors";
 import { assertRole, hasRole, type Role, type User } from "./roles";
 import type { Condition, FieldConfig, FieldType, ResourceConfig, Row, Value, Where } from "./types";
 
@@ -28,6 +28,11 @@ export interface MutateOptions {
    * and are the only actions allowed to write the status and requester fields.
    */
   action?: string;
+  /**
+   * Reserved for `change-requests.ts`: applies an approved change request. The record must still
+   * match the request's `before` snapshot.
+   */
+  approvedChange?: { before: Record<string, unknown> };
 }
 
 export interface QueryOptions {
@@ -107,6 +112,21 @@ function whereSql(config: ResourceConfig, where: Where | undefined, user: User |
     }
   }
   return out;
+}
+
+/** Evaluates a `Where` against an in-memory row (used for `changeApproval.when`). */
+export function matchesWhere(row: Record<string, unknown>, where: Where): boolean {
+  const norm = (v: unknown) => (v instanceof Date ? v.getTime() : v);
+  return Object.entries(where).every(([name, cond]) => {
+    const v = norm(row[name] ?? null);
+    if (!isOperator(cond)) return v === norm(cond);
+    if (cond.eq !== undefined && v !== norm(cond.eq)) return false;
+    if (cond.in && !cond.in.some((x) => norm(x) === v)) return false;
+    if (cond.contains !== undefined && !String(v ?? "").toLowerCase().includes(cond.contains.toLowerCase())) return false;
+    if (cond.gte !== undefined && !(v !== null && (v as number) >= (norm(cond.gte) as number))) return false;
+    if (cond.lte !== undefined && !(v !== null && (v as number) <= (norm(cond.lte) as number))) return false;
+    return true;
+  });
 }
 
 const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
@@ -193,6 +213,9 @@ function coerce(f: FieldConfig, value: unknown): unknown {
     case "money":
       if (typeof value !== "number" || !Number.isSafeInteger(value)) throw bad();
       if (f.type === "money" && value < 0) throw bad();
+      if ((f.min !== undefined && value < f.min) || (f.max !== undefined && value > f.max)) {
+        throw new ValidationError(`"${f.label}" must be between ${f.min ?? "-∞"} and ${f.max ?? "∞"}`);
+      }
       return value;
     case "boolean":
       if (typeof value !== "boolean") throw bad();
@@ -222,12 +245,24 @@ function clean(
     if (isp.includes(name) && !privileged) throw new ValidationError(`"${f.label}" is managed by the workflow`);
     out[name] = coerce(f, value);
   }
+  if (!partial) {
+    for (const f of config.fields) if (f.default !== undefined && out[f.name] == null) out[f.name] = f.default;
+  }
   for (const f of config.fields) {
     if (!f.required || isp.includes(f.name)) continue;
     const missing = partial ? f.name in out && out[f.name] === null : out[f.name] == null;
     if (missing) throw new ValidationError(`"${f.label}" is required`);
   }
   return out;
+}
+
+const snapshot = (config: ResourceConfig, row: Record<string, unknown>) =>
+  JSON.parse(JSON.stringify(Object.fromEntries(config.fields.map((f) => [f.name, row[f.name] ?? null])))) as Record<string, unknown>;
+
+/** `changeApproval` gates plain updates/deletes; approve/deny and transitions have their own controls. */
+function gated(config: ResourceConfig, action: string, rows: (Record<string, unknown> | null)[]): boolean {
+  const rule = config.changeApproval;
+  return !!rule && (action === "update" || action === "delete") && rows.some((r) => !!r && matchesWhere(r, rule.when));
 }
 
 function columns(config: ResourceConfig, data: Record<string, unknown>, sql: Sql) {
@@ -258,6 +293,9 @@ async function mutate(
         data[config.approval.requesterField] = user.id;
         data[config.statusField] = config.approval.states.pending;
       }
+      if (config.changeApproval && matchesWhere(data, config.changeApproval.when)) {
+        assertRole(user, config.changeApproval.requesterRole, `create this ${config.singular.toLowerCase()}`);
+      }
       const cols = columns(config, data, sql);
       [after] = await tx.$queryRawUnsafe<Record<string, unknown>[]>(
         `INSERT INTO ${table} (${cols.map((c) => c.col).join(", ")}) VALUES (${cols.map((c) => c.val).join(", ")}) RETURNING *`,
@@ -267,9 +305,19 @@ async function mutate(
       // The caller must be able to see the row (row filter) to change it.
       [before] = await select(config, user, { where: { id: mutation.id }, limit: 1, tx, forUpdate: true });
       if (!before) throw new NotFoundError(`${config.singular} not found`);
-      if (mutation.kind === "update") {
-        const data = clean(config, mutation.data, { partial: true, action });
-        if (!Object.keys(data).length) throw new ValidationError("Nothing to update");
+      const data = mutation.kind === "update" ? clean(config, mutation.data, { partial: true, action }) : null;
+      if (data && !Object.keys(data).length) throw new ValidationError("Nothing to update");
+      if (gated(config, action, [before, data && { ...before, ...data }])) {
+        if (!options.approvedChange) {
+          throw new ApprovalRequiredError({ kind: mutation.kind, id: mutation.id, data, before: snapshot(config, before) });
+        }
+        const now = snapshot(config, before);
+        const then = options.approvedChange.before;
+        if (Object.keys(then).some((k) => JSON.stringify(now[k]) !== JSON.stringify(then[k]))) {
+          throw new ConflictError(`${config.singular} changed since this request was made; request the change again`);
+        }
+      }
+      if (data) {
         const sets = columns(config, data, sql).map((c) => `${c.col} = ${c.val}`);
         const idParam = sql.param(BUILTIN[0], mutation.id);
         [after] = await tx.$queryRawUnsafe<Record<string, unknown>[]>(
