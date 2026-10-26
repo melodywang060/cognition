@@ -1,6 +1,6 @@
 # Internal Tools Platform
 
-Prototype for evaluating whether a fintech team can replace Power Apps internal tools with apps built by Devin on a shared foundation. See `spec.md` for scope and `build-log.md` for how it was built.
+Prototype for evaluating whether a fintech team can replace Power Apps internal tools with apps built by Devin on a shared foundation. See `spec.md` for scope and `build-log.md` for how it was built. Evidence for the evaluation: `docs/cost-ledger.md` (time, lines and corrections per session), `playbooks/add-internal-tool.devin.md` (the Devin playbook used for app #2) and the exact session prompts in `prompts/`.
 
 It has two apps:
 
@@ -35,6 +35,10 @@ Code: `src/apps/refunds/` (`config.ts` declares fields, list/filters, form, role
 
 Refunds can't be edited or deleted; status changes only through approve/deny and issue.
 
+Recorded walkthrough (65 s): Alice requests a $1,500 refund and can't approve it; Rita approves and it still waits; Rob approves and it's approved; Adam issues it; the detail page shows both approvals before the status change, then the global audit log.
+
+![Refunds two-reviewer approval flow](docs/media/refunds-flow.webp)
+
 ## Feature-flag admin
 
 Code: `src/apps/feature-flags/` (`config.ts` declares fields, list/filters, create and edit forms, roles and the prod change-approval rule; `seed.ts` seeds data). Everything else comes from the foundation.
@@ -50,6 +54,10 @@ Roles: engineers are `agent`s (reviewers can do what engineers can); admins are 
 | Change history | everyone | Detail page: change requests, decisions and the flag's audit history |
 
 Try it: as Alice Agent, open a dev flag and toggle it (applied immediately), then open the prod copy (the edit form is not shown, and the API returns 403). As Adam Admin, change a prod flag's rollout: it becomes a pending change request. Adam can't approve it; switch to Dana Admin and approve it, and the flag changes. `instant-payouts` (prod) has a seeded pending request.
+
+Recorded walkthrough (62 s): an engineer toggles a dev flag and is blocked in prod; Adam requests a prod change and can't approve it himself; Dana approves and the change applies; the flag's history shows each step.
+
+![Feature-flag prod approval flow](docs/media/feature-flags-flow.webp)
 
 ## Users and roles
 
